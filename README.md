@@ -76,3 +76,20 @@ python hacksmarter.py -t scope.txt
 ```
 
 ---
+
+## Contributing
+
+Hack Smarter Swarm is designed to be easily extensible. You can easily add more tools or modify the existing agents.
+
+### Adding New Tools
+1. Open `tools.py` and define a new Python function that executes your desired tool (e.g., via `subprocess`).
+2. Decorate the function with `@tool` from `langchain_core.tools`.
+3. Include a detailed docstring explaining **what the tool does** and **what its arguments are**, as the LLM uses this to understand how to call it.
+4. If your tool finds new subdomains, ports, or vulnerabilities, make sure to save the results to the shared state using `update_db(key, data)`.
+
+### Modifying Agents
+1. Open `agents.py`.
+2. Locate the node for the agent you want to modify (e.g., `recon_node` or `vuln_node`).
+3. Import your newly created tool from `tools.py` at the top of the file.
+4. Add your tool to the agent's tool list (e.g., `recon_tools` or `verification_tools`).
+5. Update the agent's `system_prompt` to give the AI context on when and how to use your tool, or how its overall strategy should change.
