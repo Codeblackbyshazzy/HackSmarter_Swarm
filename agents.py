@@ -179,9 +179,9 @@ def vuln_node(state: PentestState):
     else:
         print(f"[*] Executing Nuclei on {len(new_targets)} NEW live targets...")
         
-        # 2. Deterministic Execution: Run Nuclei ONLY on new targets
-        for url in new_targets:
-            run_nuclei_tool.invoke(url)
+        # 2. Aggregated Execution: Run Nuclei ONCE on all new targets
+        # This allows Nuclei to manage its own rate limit across the entire set.
+        run_nuclei_tool.invoke({"targets": new_targets})
             
         # Log these new targets to the DB so we never scan them again
         update_db("scanned_targets", new_targets)
@@ -222,28 +222,12 @@ def vuln_node(state: PentestState):
     agent_executor = create_react_agent(llm, verification_tools, prompt=system_prompt)
 
     # Create the modern LangGraph prebuilt agent
-    max_retries = 3
-    verification_results = None
-    
-    for attempt in range(max_retries):
-        try:
-            verification_results = agent_executor.invoke({
-                "messages": [("user", f"Here are the raw Nuclei findings from the database:\n{current_vulns}")]
-            })
-            break  # Success! Break out of the retry loop.
-            
-        except Exception as e:
-            error_msg = str(e)
-            if "503" in error_msg or "429" in error_msg: # Catch Unavailable or Rate Limit errors
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 10  # Waits 10s, then 20s...
-                    print(f"[!] Gemini API is overloaded (503/429). Pausing for {wait_time} seconds before retry {attempt + 1}/{max_retries}...")
-                    time.sleep(wait_time)
-                else:
-                    print("[!] Gemini API is completely jammed. Failing gracefully.")
-                    raise e # Give up after 3 tries so you aren't stuck forever
-            else:
-                raise e # If it's a different error (like a syntax issue), crash normally
+    # 4. LLM Execution: Verify Findings 
+    # (The manual retry loop has been removed here, as we now use LangGraph's native RetryPolicy)
+    verification_results = agent_executor.invoke({
+        "messages": [("user", f"Here are the raw Nuclei findings from the database:\n{current_vulns}")]
+    })
+
 
     # Extract and print the final answer so you can see the agent's thought process
     final_summary = verification_results["messages"][-1].content

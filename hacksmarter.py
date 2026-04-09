@@ -6,15 +6,35 @@ from state import PentestState
 from agents import recon_node, vuln_node, strategy_node
 from tools import run_nuclei_tool, execute_curl_request, run_nmap_tool, DB_PATH
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.types import RetryPolicy
 
 # 1. Initialize the Graph with our State
 workflow = StateGraph(PentestState)
 memory = MemorySaver()
 
-# 2. Add the Nodes (The Agents)
-workflow.add_node("recon", recon_node)
-workflow.add_node("vuln", vuln_node)
-workflow.add_node("strategy", strategy_node)
+# 2. Add the Nodes (The Agents) with a robust Retry Policy for Gemini API 503/429 errors
+# This pauses for 30s as requested by the user, with exponential backoff.
+GEMINI_RETRY_POLICY = RetryPolicy(
+    max_attempts=3,
+    initial_interval=30.0,
+    backoff_factor=2.0
+)
+
+def node_with_retry_log(node_func):
+    """Wraps a node function to print a message when a transient API error occurs."""
+    def wrapper(state):
+        try:
+            return node_func(state)
+        except Exception as e:
+            err_str = str(e).lower()
+            if "503" in err_str or "unavailable" in err_str or "429" in err_str:
+                print(f"\n[!] Gemini API Spike Detected (503/429). Retrying node in 30s...")
+            raise e
+    return wrapper
+
+workflow.add_node("recon", node_with_retry_log(recon_node), retry=GEMINI_RETRY_POLICY)
+workflow.add_node("vuln", node_with_retry_log(vuln_node), retry=GEMINI_RETRY_POLICY)
+workflow.add_node("strategy", node_with_retry_log(strategy_node), retry=GEMINI_RETRY_POLICY)
 
 def parse_targets(target_input: str) -> list:
     """Parses targets from string, comma-separated string, or file."""

@@ -145,9 +145,10 @@ def run_nmap_tool(target: str) -> list:
         return [{"error": f"Nmap failed: {e.stderr}"}]
 
 @tool
-def run_nuclei_tool(target_url: str) -> str:
+def run_nuclei_tool(targets: list) -> str:
     """
-    Runs Nuclei and safely parses the JSON output into the DB.
+    Runs Nuclei against a list of targets and safely parses the JSON output into the DB.
+    Args: targets (list): A list of target URLs to scan.
     """
     out_file = 'nuclei_out.json'
     
@@ -155,19 +156,25 @@ def run_nuclei_tool(target_url: str) -> str:
     if os.path.exists(out_file):
         os.remove(out_file)
 
+    if not targets:
+        return "No targets provided to Nuclei."
+
+    print(f"[*] Recon Agent executing Nuclei on {len(targets)} targets...")
     try:
         # Run optimized nuclei command
+        # Passing targets via stdin to handle multiple URLs safely and aggregated rate limiting
+        input_data = "\n".join(targets)
         result = subprocess.run(
             [
                 'nuclei', 
-                '-target', target_url, 
                 '-je', out_file, 
                 '-severity', 'medium,high,critical',
-                '-rl', '50',          
+                '-rl', '20',          # Lowered to 20 for safety
                 '-mhe', '3',         
                 '-timeout', '5',     
                 '-retries', '1'      
             ],
+            input=input_data,
             capture_output=True, text=True, check=False # check=False so it doesn't crash on non-zero exits
         )
         
@@ -175,19 +182,19 @@ def run_nuclei_tool(target_url: str) -> str:
         if os.path.exists(out_file):
             with open(out_file, 'r') as f:
                 try:
-                    # Try parsing as a single JSON array (What you are seeing)
+                    # Try parsing as a single JSON array
                     parsed_data = json.load(f)
                     items = parsed_data if isinstance(parsed_data, list) else [parsed_data]
                 except json.JSONDecodeError:
-                    # Fallback to JSON Lines (If Nuclei changes format later)
+                    # Fallback to JSON Lines
                     f.seek(0)
                     items = [json.loads(line) for line in f if line.strip()]
 
                 for item in items:
                     findings.append({
                         "template": item.get("template-id"),
-                        # Grab the exact host/port Nuclei found it on, fallback to our target_url
-                        "target": item.get("matched-at", target_url), 
+                        # Grab the exact host/port Nuclei found it on
+                        "target": item.get("matched-at", "unknown"), 
                         "severity": item.get("info", {}).get("severity"),
                         "description": item.get("info", {}).get("name")
                     })
