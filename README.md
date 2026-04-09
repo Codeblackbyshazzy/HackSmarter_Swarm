@@ -30,7 +30,7 @@ You get a clean, validated `dradis_import.json` and a Markdown report with concr
 
 ## Features
 - **Multi-Agent Architecture**:
-  - **Tactical Recon Specialist**: Handles domain discovery and port scanning.
+  - **Tactical Recon Specialist**: Handles domain discovery, port scanning, and WordPress-specific vulnerability checks.
   - **Vuln Worker**: Identifies web surfaces, runs Nuclei, and verifies vulnerabilities using LLM logic.
   - **Strategy & Reporting Node**: Analyzes results, determines if it should pivot deeper, and generates professional summaries.
 - **Deduplication & State Management**: Maintains a persistent local ledger (`pentest_db.json`) of findings across loops.
@@ -58,6 +58,7 @@ The AI interacts with the following command-line binaries. Ensure they are insta
 - `curl`
 - `nc` (Netcat)
 - [Hydra](https://github.com/vanhauser-thc/thc-hydra)
+- [WPScan](https://github.com/wpscantech/wpscan)
 - [testssl.sh](https://testssl.sh/)
 
 ### Environment Variables
