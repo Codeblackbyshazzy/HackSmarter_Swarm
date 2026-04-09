@@ -62,7 +62,7 @@ if __name__ == "__main__":
     print("[*] Initializing the Hack Smarter Swarm...")
 
     # 1. Handle Arguments
-    parser = argparse.ArgumentParser(description="Hack Smarter AI Swarm")
+    parser = argparse.ArgumentParser(description="Hack Smarter AI Swarm. Built to assist, not replace.")
     parser.add_argument("-t", "--target", required=True, help="Target(s) or file path")
     args = parser.parse_args()
 
