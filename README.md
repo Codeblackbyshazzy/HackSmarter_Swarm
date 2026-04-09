@@ -8,7 +8,7 @@ Hack Smarter Swarm is a multi-agent AI penetration testing assistant built to **
 
 It orchestrates industry-standard open-source tools to autonomously map attack surfaces, verify live web servers, probe for vulnerabilities, and eliminate false positives, saving you time and giving you a head-start on deeper, manual exploitation.
 
-<img width="70%" alt="image" src="https://github.com/user-attachments/assets/57f6512b-9df4-46e0-8590-2244a68db8fe" />
+<img width="70%" alt="image" src="https://github.com/user-attachments/assets/1c3ee63a-1ea2-454b-9904-8af6553db62f" />
 
 ## The Philosophy: Assisting, NEVER Replacing
 Unlike many open-source projects that chase full autonomy or try to completely abstract away the human element with a "black box" hack button, this swarm is built purely to be an **assistant**. It handles the tedious, time-consuming tasks: 
