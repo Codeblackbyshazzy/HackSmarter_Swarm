@@ -39,6 +39,8 @@ You get a clean, validated `dradis_import.json` and a Markdown report with concr
   - `final_report.md`: A high-level, human-readable executive summary.
   - `dradis_import.json`: A structured JSON file ready for ingestion into reporting platforms like Dradis.
 
+<img width="70%" alt="image" src="https://github.com/user-attachments/assets/1c3ee63a-1ea2-454b-9904-8af6553db62f" />
+
 ## Prerequisites
 
 ### Python Dependencies
