@@ -28,13 +28,6 @@ Unlike many open-source projects that chase full autonomy or try to completely a
 
 You get a clean, validated `dradis_import.json` and a Markdown report with concrete Proof of Concepts (PoCs). You do the deep-dive manual exploitation.
 
-### How Hack Smarter Swarm is Different
-1. **Not Just a Chatbot**: It's an agentic loop driving real CLI tools via subprocesses in your terminal -- not just a web UI where you manually copy and paste scan outputs.
-2. **False-Positive Elimination**: Many AI tools blindly trust vulnerability scanners, resulting in bloated, noisy reports. The Swarm explicitly uses `Verification Agents` armed with tools like `curl`, `nc`, and `hydra` to confirm a finding before considering it real.
-3. **Local State Management**: Operations run with a persistent `pentest_db.json` ledger, ensuring loops and pivoting strategies are based on unified, deduplicated data.
-
-<img width="70%" alt="image" src="https://github.com/user-attachments/assets/1c3ee63a-1ea2-454b-9904-8af6553db62f" />
-
 ## Features
 - **Multi-Agent Architecture**:
   - **Tactical Recon Specialist**: Handles domain discovery and port scanning.
