@@ -88,13 +88,12 @@ python hacksmarter.py -t scope.txt
 
 # Excluding Tools
 You can exclude specific tools from the workflow using the `-x` or `--exclude` flag followed by a comma-separated list of tool name substrings (e.g., `nuclei`, `nmap`, `wpscan`, `dirsearch`).
-```bash
+
 # Skip Nuclei and Nmap
 python hacksmarter.py -t example.com -x nuclei,nmap
 
 # Skip WPScan and Diracan
 python hacksmarter.py -t example.com -x wpscan,dirsearch
-```
 ```
 
 ---
