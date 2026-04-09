@@ -1,0 +1,15 @@
+# Core AI Frameworks
+langgraph>=0.0.26
+langchain-core>=0.1.30
+
+# Gemini Integration
+langchain-google-genai>=1.0.1
+
+# Data Validation (For our Dradis JSON output)
+pydantic>=2.0.0
+
+# Environment Variable Management
+python-dotenv>=1.0.0
+
+# Pentesting Tools
+ssh-audit

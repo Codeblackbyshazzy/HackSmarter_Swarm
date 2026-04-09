@@ -1,0 +1,262 @@
+# agents.py
+from dotenv import load_dotenv
+import os
+import json
+import time 
+
+load_dotenv()
+
+from state import PentestState
+from tools import format_scope_tool, run_subfinder_tool, run_nmap_tool
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.prebuilt import create_react_agent
+from langchain_core.prompts import ChatPromptTemplate
+from tools import run_nuclei_tool, execute_curl_request, run_nmap_tool
+from pydantic import BaseModel, Field
+from typing import Optional, Literal
+from tools import run_nuclei_tool, execute_curl_request, run_nmap_tool, filter_live_targets_httpx, run_nc_banner_grab, run_ssh_audit, run_hydra_check, run_testssl_verification, DB_PATH, update_db
+from state import PentestState
+
+# Initialize the Gemini Model (Make sure your GOOGLE_API_KEY is in your environment vars)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
+
+# 1. Define the exact structure we want Gemini to output
+class StrategyDecision(BaseModel):
+    status: Literal["complete", "pivot"] = Field(description="Choose 'complete' if enough high-value data is found, or 'pivot' to run deeper recon.")
+    pivot_directives: Optional[str] = Field(description="If pivoting, give explicit instructions for the Recon Agent (e.g., 'Brute force directories on 192.168.1.5:8443').")
+    markdown_report: Optional[str] = Field(description="If complete, write a professional pentest summary in Markdown.")
+    dradis_json: Optional[dict] = Field(description="If complete, output a structured JSON representing the findings, suitable for Dradis Pro ingestion.")
+
+def get_db_data():
+    """Helper to read the current findings from disk."""
+    if os.path.exists(DB_PATH):
+        with open(DB_PATH, "r") as f:
+            return json.load(f)
+    return {"subdomains": [], "open_ports": [], "vulnerabilities": []}
+
+def strategy_node(state: PentestState):
+    print("\n--- [NODE: STRATEGY & REPORTING] ---")
+    
+    # 1. Gather current metrics
+    current_subdomains = state.get("subdomains", [])
+    current_ports = state.get("open_ports", [])
+    current_vulns = state.get("vulnerabilities", [])
+    
+    current_vuln_count = len(current_vulns)
+    last_count = state.get("last_vuln_count", -1) # Default to -1 on the very first pass
+    
+    # 2. Deterministic Guardrail
+    force_complete = False
+    if current_vuln_count == last_count:
+        print("[!] Stagnation detected: No new findings. Forcing completion.")
+        force_complete = True
+
+    # Define the default AI decision to prevent the NameError
+    # (If you add an LLM prompt here later to make a choice, it will overwrite this)
+    decision = "PIVOT" 
+
+    # 3. The Exit & Reporting Hook
+    if force_complete or decision == "COMPLETE":
+        print("\n[*] Assembling final pentest reports...")
+        db = get_db_data()
+        
+        # Generate the Machine-Readable Report (Dradis/JSON)
+        with open("dradis_import.json", "w") as f:
+            json.dump(db, f, indent=4)
+            
+        # Generate the Human-Readable Report (Markdown)
+        report_prompt = (
+            "You are a Senior Security Consultant. Write a professional Executive Summary "
+            "based on the following pentest data. You MUST include a table of vulnerabilities.\n\n"
+            "The table should have these columns: Target, Vulnerability, Severity, and Reproduction (PoC).\n"
+            "In the 'Reproduction' column, provide the exact commands or steps needed for a human "
+            "to reproduce the finding. Use code blocks for commands.\n\n"
+            f"Raw Data: {json.dumps(db)}"
+        )
+        final_report_md = llm.invoke(report_prompt).content
+        
+        with open("final_report.md", "w") as f:
+            # Clean up the markdown text just in case there's a signature
+            clean_md = final_report_md if isinstance(final_report_md, str) else final_report_md[0].get("text", "")
+            f.write(clean_md)
+            
+        print("[*] SUCCESS: dradis_import.json and final_report.md have been saved to disk.")
+        
+        return {
+            "current_phase": "COMPLETE",
+            "last_vuln_count": current_vuln_count
+        }
+
+    # 4. If not complete, print status and keep looping
+    if not force_complete:
+        print(f"[*] Strategy Decision: {decision} (Continuing scan...)")
+        
+    return {
+        "current_phase": "TACTICAL_RECON",
+        "last_vuln_count": current_vuln_count
+    }
+
+def recon_node(state: PentestState):
+    print("\n--- [NODE: TACTICAL RECON] ---")
+    
+    recon_tools = [run_subfinder_tool, run_nmap_tool, format_scope_tool]
+    directives = state.get("strategy_directives") or "Perform initial discovery on the target."
+    
+    system_prompt = (
+        f"You are a Tactical Recon Specialist. Current objective: {directives}\n"
+        "Analyze the target, find subdomains, and scan for ports. "
+        "When you are finished, summarize what you found."
+    )
+
+    recon_agent = create_react_agent(llm, recon_tools, prompt=system_prompt)
+
+    # Execute the agent
+    result = recon_agent.invoke({
+        "messages": [("user", f"Target: {state['target_domain']}")]
+    })
+
+    # NEW: Print the Agent's final response so you can see its summary!
+    final_msg = result["messages"][-1].content
+    print(f"[*] Tactical Recon Summary: {final_msg}")
+
+    # Sync state with our Source of Truth (the DB)
+    db = get_db_data()
+    return {
+        "subdomains": db["subdomains"],
+        "open_ports": db["open_ports"],
+        "current_phase": "recon_conducted"
+    }
+
+def vuln_node(state: PentestState):
+    """
+    Vuln Worker: Compiles a comprehensive target list, runs Nuclei, 
+    and uses Gemini to verify findings.
+    """
+    print("\n--- [NODE: VULN ANALYSIS] ---")
+    
+    # 1. Compile the Target Matrix (Using a set to avoid duplicates)
+    targets_to_scan = set()
+
+    # Add explicitly discovered web ports from nmap
+    for port_data in state.get("open_ports", []):
+        port = str(port_data.get("port"))
+        target = port_data.get("target")
+        if port in ["80", "443", "8080", "8443"]:
+            protocol = "https" if port in ["443", "8443"] else "http"
+            targets_to_scan.add(f"{protocol}://{target}:{port}")
+
+    # Add a baseline "blind sweep" for all discovered subdomains
+    for sub in state.get("subdomains", []):
+        # We can add both back in now, because HTTPX will filter out the dead ones instantly!
+        targets_to_scan.add(f"http://{sub}:80")
+        targets_to_scan.add(f"https://{sub}:443")
+
+    if not targets_to_scan:
+        print("[-] No web targets to scan. Skipping.")
+        return {"current_phase": "vuln_complete"}
+
+    # ==========================================
+    # THE HTTPX BOUNCER
+    # ==========================================
+    live_targets = filter_live_targets_httpx(list(targets_to_scan))
+    
+    if not live_targets:
+        print("[-] HTTPX found 0 live web servers. Skipping Nuclei.")
+        return {"current_phase": "vuln_complete"}
+
+    # ==========================================
+    # THE SCAN LEDGER (NEW)
+    # ==========================================
+    db = get_db_data()
+    scanned_targets = db.get("scanned_targets", [])
+    
+    # Filter out targets we've already scanned in previous loops
+    new_targets = [url for url in live_targets if url not in scanned_targets]
+
+    if not new_targets:
+        print(f"[-] All {len(live_targets)} live targets have already been scanned by Nuclei. Skipping heavy scan.")
+    else:
+        print(f"[*] Executing Nuclei on {len(new_targets)} NEW live targets...")
+        
+        # 2. Deterministic Execution: Run Nuclei ONLY on new targets
+        for url in new_targets:
+            run_nuclei_tool.invoke(url)
+            
+        # Log these new targets to the DB so we never scan them again
+        update_db("scanned_targets", new_targets)
+        
+    # 3. Pull the combined results from the Database
+    # (Refresh the DB object since run_nuclei_tool may have just updated it)
+    db = get_db_data()
+    current_vulns = db.get("vulnerabilities", [])
+
+    if not current_vulns:
+         print("[-] Nuclei found nothing across all targets.")
+         return {
+             "vulnerabilities": [], 
+             "current_phase": "vuln_complete"
+         }
+
+    print(f"[*] DB holds {len(current_vulns)} potential issues. Waking up Gemini for verification...")
+
+    # 4. LLM Execution: Verify Findings
+    verification_tools = [
+    execute_curl_request, 
+    run_nmap_tool, 
+    run_nc_banner_grab, 
+    run_ssh_audit, 
+    run_hydra_check, 
+    run_testssl_verification
+]
+    
+    system_prompt = (
+    "You are a Senior Penetration Tester. Your goal is to verify findings.\n\n"
+    "CRITICAL REQUIREMENT: For every verified finding, you must provide a 'Proof of Concept' (PoC).\n"
+    "The PoC must include:\n"
+    "1. The EXACT command or tool call you used (e.g., the hydra command or curl string).\n"
+    "2. The specific line of output that confirms the vulnerability.\n\n"
+    "Format your verification as a structured summary that clearly separates the 'Verification Status' from the 'Reproduction Steps'."
+)
+
+    agent_executor = create_react_agent(llm, verification_tools, prompt=system_prompt)
+
+    # Create the modern LangGraph prebuilt agent
+    max_retries = 3
+    verification_results = None
+    
+    for attempt in range(max_retries):
+        try:
+            verification_results = agent_executor.invoke({
+                "messages": [("user", f"Here are the raw Nuclei findings from the database:\n{current_vulns}")]
+            })
+            break  # Success! Break out of the retry loop.
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "503" in error_msg or "429" in error_msg: # Catch Unavailable or Rate Limit errors
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 10  # Waits 10s, then 20s...
+                    print(f"[!] Gemini API is overloaded (503/429). Pausing for {wait_time} seconds before retry {attempt + 1}/{max_retries}...")
+                    time.sleep(wait_time)
+                else:
+                    print("[!] Gemini API is completely jammed. Failing gracefully.")
+                    raise e # Give up after 3 tries so you aren't stuck forever
+            else:
+                raise e # If it's a different error (like a syntax issue), crash normally
+
+    # Extract and print the final answer so you can see the agent's thought process
+    final_summary = verification_results["messages"][-1].content
+    
+    # Bulletproof parser to strip out signatures if they appear
+    if isinstance(final_summary, list) and len(final_summary) > 0:
+        clean_summary = final_summary[0].get("text", str(final_summary))
+    else:
+        clean_summary = str(final_summary)
+        
+    print(f"\n[*] Vulnerability Verification Summary:\n{clean_summary}\n")
+    
+    # 5. Return the State Update
+    return {
+        "vulnerabilities": current_vulns, # The complete, shared history
+        "current_phase": "vuln_complete"
+    }

@@ -1,0 +1,42 @@
+# --- Secrets & Credentials ---
+.env
+.env.*
+
+# --- Project Specific Outputs ---
+nuclei_out.json
+dradis_import.json
+pentest_db.json
+reports/
+outputs/
+*.log
+final_report.md
+
+# --- Python Artifacts ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+.env/
+myenv/
+.myenv/
+
+# --- IDE & OS Files ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*~
+
+# --- Databases (If you switch LangGraph to SqliteSaver) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Additional Pentest tool outputs ---
+*.xml
+*.nmap
+*.gnmap
