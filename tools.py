@@ -315,9 +315,12 @@ def run_wpscan_tool(target_url: str) -> str:
     """
     print(f"[*] Recon Agent executing wpscan on {target_url}...")
     try:
+        wpscan_token = os.environ.get("WPSCAN_API_TOKEN")
+        token_args = ["--api-token", wpscan_token] if wpscan_token else []
+
         # Try running without update first for speed
         result = subprocess.run(
-            ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'],
+            ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'] + token_args,
             capture_output=True, text=True
         )
         

@@ -65,6 +65,7 @@ The AI interacts with the following command-line binaries. Ensure they are insta
 You need a Google Gemini API Key. Ensure it is placed in a `.env` file in the root of the project:
 ```env
 GOOGLE_API_KEY="your_api_key_here"
+WPSCAN_API_TOKEN="your_wpscan_token_here"
 ```
 
 ## Usage
