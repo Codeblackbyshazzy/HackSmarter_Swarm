@@ -10,6 +10,14 @@ It orchestrates industry-standard open-source tools to autonomously map attack s
 
 <img width="70%" alt="image" src="https://github.com/user-attachments/assets/e5f3694b-34c2-4739-8f56-5b9161da8d22" />
 
+#### Changing the LLM Model
+Hack Smarter Swarm is built using Gemini, but since it uses LangChain, it is very easy to swap to another model provider (like OpenAI or Anthropic).
+1. Open `agents.py`.
+2. Locate the `llm` initialization near the top of the file: `llm = ChatGoogleGenerativeAI(...)`.
+3. Import the required Chat model from LangChain (e.g., `from langchain_openai import ChatOpenAI`).
+4. Replace the `llm` variable with your new model (e.g., `llm = ChatOpenAI(model="gpt-4o", temperature=0)`).
+5. Add your new API key to the `.env` file and install the corresponding LangChain partner package via pip.
+
 ## The Philosophy: Assisting, NEVER Replacing
 Unlike many open-source projects that chase full autonomy or try to completely abstract away the human element with a "black box" hack button, this swarm is built purely to be an **assistant**. It handles the tedious, time-consuming tasks: 
 - Deduplicating subdomains.
