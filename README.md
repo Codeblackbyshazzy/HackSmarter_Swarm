@@ -4,7 +4,7 @@
 **Organizations:** [Kairos Sec](https://kairos-sec.com) | [Hack Smarter](https://hacksmarter.org)
 
 ## Overview
-Hack Smarter Swarm is a multi-agent AI penetration testing assistant built to **assist (not replace)** ethical hackers and security professionals. Powered by [LangGraph](https://python.langchain.com/docs/langgraph/) and Gemini, the swarm acts as your automated reconnaissance and initial vulnerability assessment wingman.
+Hack Smarter Swarm is a multi-agent AI penetration testing assistant built to **assist (not replace)** ethical hackers and security professionals. Powered by [LangGraph](https://python.langchain.com/docs/langgraph/) and Gemini, the swarm acts as your automated reconnaissance and initial vulnerability assessment assistant.
 
 It orchestrates industry-standard open-source tools to autonomously map attack surfaces, verify live web servers, probe for vulnerabilities, and eliminate false positives, saving you time and giving you a head-start on deeper, manual exploitation.
 
