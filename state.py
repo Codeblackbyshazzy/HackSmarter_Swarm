@@ -19,6 +19,7 @@ class PentestState(TypedDict):
     vulnerabilities: Annotated[List[dict], merge_unique]
     interesting_files: Annotated[List[dict], merge_unique]
     excluded_tools: List[str]
+    verbose: bool
     
     current_phase: str
     strategy_directives: str

@@ -230,7 +230,7 @@ def vuln_node(state: PentestState):
         print(f"[*] Executing Nuclei on {len(new_targets)} NEW live targets...")
         
         # 2. Aggregated Execution: Run Nuclei ONCE on all new targets
-        run_nuclei_tool.invoke({"targets": new_targets})
+        run_nuclei_tool.invoke({"targets": new_targets, "verbose": state.get("verbose")})
             
         # Log these new targets to the ledger
         for target in new_targets:
@@ -248,7 +248,7 @@ def vuln_node(state: PentestState):
         
     if dirsearch_targets:
         print(f"[*] Executing Bulk Dirsearch on {len(dirsearch_targets)} targets...")
-        run_dirsearch_tool.invoke({"url": dirsearch_targets})
+        run_dirsearch_tool.invoke({"url": dirsearch_targets, "verbose": state.get("verbose")})
     else:
         print(f"[-] All {len(live_targets)} live targets have already been scanned by dirsearch. Skipping.")
 

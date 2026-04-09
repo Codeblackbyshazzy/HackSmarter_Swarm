@@ -206,10 +206,12 @@ def run_nmap_tool(target: str) -> list:
         return [{"error": f"Nmap failed: {e.stderr}"}]
 
 @tool
-def run_nuclei_tool(targets: list) -> str:
+def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
     """
     Runs Nuclei against a list of targets and safely parses the JSON output into the DB.
-    Args: targets (list): A list of target URLs to scan.
+    Args: 
+        targets (list): A list of target URLs to scan.
+        verbose (bool): If True, shows raw Nuclei output in the terminal.
     """
     out_file = 'nuclei_out.json'
     
@@ -225,20 +227,35 @@ def run_nuclei_tool(targets: list) -> str:
         # Run optimized nuclei command
         # Passing targets via stdin to handle multiple URLs safely and aggregated rate limiting
         input_data = "\n".join(targets)
+        
+        cmd = [
+            'nuclei', 
+            '-je', out_file, 
+            '-severity', 'medium,high,critical',
+            '-exclude-tags', 'dos,fuzz',  # CRITICAL: Exclude templates that crash or overload servers
+            '-rl', '5',                   # Hard throttle: Maximum 5 requests per second 
+            '-c', '5',                    # Concurrency: Only 5 active templates at a time
+            '-timeout', '10',             # Give the smaller servers 10 seconds to reply
+            '-retries', '0',              # If a request drops, let it fail. Do NOT retry and compound the DoS.
+            '-mhe', '3'      
+        ]
+        
+        if verbose:
+            cmd.append("-v")
+            
+        # Scrub GOOGLE_API_KEY to prevent Nuclei from erroneously attempting 
+        # to use Google Search templates and complaining about missing GOOGLE_API_CX.
+        nuclei_env = os.environ.copy()
+        if "GOOGLE_API_KEY" in nuclei_env:
+            del nuclei_env["GOOGLE_API_KEY"]
+            
         result = subprocess.run(
-            [
-                'nuclei', 
-                '-je', out_file, 
-                '-severity', 'medium,high,critical',
-                '-exclude-tags', 'dos,fuzz',  # CRITICAL: Exclude templates that crash or overload servers
-                '-rl', '5',                   # Hard throttle: Maximum 5 requests per second 
-                '-c', '5',                    # Concurrency: Only 5 active templates at a time
-                '-timeout', '10',             # Give the smaller servers 10 seconds to reply
-                '-retries', '0',              # If a request drops, let it fail. Do NOT retry and compound the DoS.
-                '-mhe', '3'      
-            ],
+            cmd,
             input=input_data,
-            capture_output=True, text=True, check=False # check=False so it doesn't crash on non-zero exits
+            capture_output=not verbose, 
+            text=True, 
+            check=False,
+            env=nuclei_env
         )
         
         findings = []
@@ -413,12 +430,13 @@ def run_wpscan_tool(target_url: str) -> str:
         return f"WPScan Error: {str(e)}"
 
 @tool
-def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,js,txt") -> str:
+def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,js,txt", verbose: bool = False) -> str:
     """
     Performs directory and file discovery on a web server using dirsearch.
     Args:
         url (Union[str, List[str]]): The target URL or a list of target URLs.
         extensions (str): Comma-separated list of extensions to check (default: php,html,js,txt).
+        verbose (bool): If True, shows raw dirsearch output in the terminal.
     """
     targets = [url] if isinstance(url, str) else url
     
@@ -444,9 +462,7 @@ def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,j
         else:
             cmd_targets = ['-u', new_targets[0]]
 
-        # Run dirsearch
-        subprocess.run(
-            [
+        cmd = [
                 'dirsearch'
             ] + cmd_targets + [
                 '-e', extensions, 
@@ -454,8 +470,14 @@ def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,j
                 '-o', out_file,
                 '--random-user-agent',
                 '--quiet-mode'
-            ],
-            capture_output=True, text=True, check=False
+            ]
+            
+        # Run dirsearch
+        subprocess.run(
+            cmd,
+            capture_output=not verbose, 
+            text=True, 
+            check=False
         )
         
         findings = []
