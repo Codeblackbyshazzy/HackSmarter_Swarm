@@ -1,83 +1,85 @@
-# tools.py
 import subprocess
 import json
 import re
+import sqlite3  # Added for relational database support
 from langchain_core.tools import tool
 import os
 from tqdm import tqdm
 from typing import Union, List
 
-DB_PATH = "pentest_db.json"
+DB_PATH = "recon.db"  # Changed from pentest_db.json
 OUTPUT_DIR = "."
 SKIP_CURRENT_TASK = False
+
+def init_db():
+    """Initializes the SQLite database with the required schema."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Schema matching our previous JSON keys
+    c.execute("CREATE TABLE IF NOT EXISTS subdomains (domain TEXT PRIMARY KEY)")
+    c.execute("CREATE TABLE IF NOT EXISTS open_ports (target TEXT, port TEXT, UNIQUE(target, port))")
+    c.execute("CREATE TABLE IF NOT EXISTS vulnerabilities (target TEXT, template_id TEXT, severity TEXT, description TEXT, poc TEXT, UNIQUE(target, template_id))")
+    c.execute("CREATE TABLE IF NOT EXISTS interesting_files (target TEXT, url TEXT, comment TEXT, UNIQUE(target, url))")
+    c.execute("CREATE TABLE IF NOT EXISTS tool_runs (tool_name TEXT, target TEXT, UNIQUE(tool_name, target))")
+    conn.commit()
+    conn.close()
 
 def set_output_dir(path: str):
     """Sets the global output directory and updates DB_PATH."""
     global OUTPUT_DIR, DB_PATH
     OUTPUT_DIR = path
-    DB_PATH = os.path.join(path, "pentest_db.json")
+    DB_PATH = os.path.join(path, "recon.db")
+    init_db()  # Initialize the DB file in the new folder
 
 def update_db(key: str, new_data: list):
-    # Default structure
-    db = {"subdomains": [], "open_ports": [], "vulnerabilities": [], "interesting_files": [], "tool_runs": {}}
+    """Updates the SQLite database with new findings based on the provided key."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
     
-    if os.path.exists(DB_PATH):
-        with open(DB_PATH, "r") as f:
-            try:
-                # Merge existing data into the default structure
-                existing_db = json.load(f)
-                db.update(existing_db)
-            except json.JSONDecodeError:
-                pass
-
-    # Deduplicate and merge
-    current_list = db.get(key, [])
-    for item in new_data:
-        if item not in current_list:
-            current_list.append(item)
-    
-    db[key] = current_list
-    with open(DB_PATH, "w") as f:
-        json.dump(db, f, indent=4)
-    return db[key]
+    try:
+        if key == "subdomains":
+            for domain in new_data:
+                c.execute("INSERT OR IGNORE INTO subdomains (domain) VALUES (?)", (domain,))
+        elif key == "open_ports":
+            for port_data in new_data:
+                c.execute("INSERT OR IGNORE INTO open_ports (target, port) VALUES (?, ?)", 
+                         (port_data.get("target"), port_data.get("port")))
+        elif key == "vulnerabilities":
+            for v in new_data:
+                c.execute("INSERT OR IGNORE INTO vulnerabilities (target, template_id, severity, description, poc) VALUES (?, ?, ?, ?, ?)",
+                         (v.get("target"), v.get("template"), v.get("severity"), v.get("description"), v.get("poc", "")))
+        elif key == "interesting_files":
+            for f in new_data:
+                c.execute("INSERT OR IGNORE INTO interesting_files (target, url, comment) VALUES (?, ?, ?)",
+                         (f.get("target"), f.get("url"), f.get("comment", "")))
+        
+        conn.commit()
+    except Exception as e:
+        print(f"[!] SQLite update_db Error ({key}): {e}")
+    finally:
+        conn.close()
+    return new_data
 
 def is_already_run(tool_name: str, target: str) -> bool:
-    """Checks if a tool has already been run against a target in this database."""
-    if not os.path.exists(DB_PATH):
-        return False
-    with open(DB_PATH, "r") as f:
-        try:
-            db = json.load(f)
-            # The key in tool_runs is the tool's common name
-            runs = db.get("tool_runs", {}).get(tool_name, [])
-            return target in runs
-        except json.JSONDecodeError:
-            return False
+    """Checks if a tool has already been run against a target in the SQLite DB."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM tool_runs WHERE tool_name = ? AND target = ?", (tool_name, target))
+    result = c.fetchone()
+    conn.close()
+    return result is not None
 
 def mark_as_run(tool_name: str, target: str):
-    """Marks a tool as having been run against a target."""
-    db = {"subdomains": [], "open_ports": [], "vulnerabilities": [], "interesting_files": [], "tool_runs": {}}
-    if os.path.exists(DB_PATH):
-        with open(DB_PATH, "r") as f:
-            try:
-                existing_db = json.load(f)
-                db.update(existing_db)
-            except json.JSONDecodeError:
-                pass
-    
-    if "tool_runs" not in db:
-        db["tool_runs"] = {}
-        
-    tool_runs = db["tool_runs"]
-    if tool_name not in tool_runs:
-        tool_runs[tool_name] = []
-    
-    if target not in tool_runs[tool_name]:
-        tool_runs[tool_name].append(target)
-    
-    db["tool_runs"] = tool_runs
-    with open(DB_PATH, "w") as f:
-        json.dump(db, f, indent=4)
+    """Marks a tool as having been run against a target in the SQLite DB."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    try:
+        c.execute("INSERT OR IGNORE INTO tool_runs (tool_name, target) VALUES (?, ?)", (tool_name, target))
+        conn.commit()
+    except Exception as e:
+        print(f"[!] SQLite mark_as_run Error: {e}")
+    finally:
+        conn.close()
 
 def filter_live_targets_httpx(targets: list) -> list:
     """

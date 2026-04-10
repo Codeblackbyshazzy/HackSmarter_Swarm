@@ -33,11 +33,12 @@ You get a clean, validated `dradis_import.json` and a Markdown report with concr
   - **Tactical Recon Specialist**: Handles domain discovery, port scanning, and WordPress-specific vulnerability checks.
   - **Vuln Worker**: Identifies web surfaces, runs Nuclei, and verifies vulnerabilities using LLM logic.
   - **Strategy & Reporting Node**: Analyzes results, determines if it should pivot deeper, and generates professional summaries.
-- **Deduplication & State Management**: Maintains a persistent local ledger (`pentest_db.json`) of findings across loops.
+- **Deduplication & State Management**: Maintains a persistent local ledger (`recon.db` via SQLite) of findings across loops.
 - **False-Positive Reduction**: Actively verifies potential vulnerabilities using an AI agent armed with `curl`, `nmap`, `nc` (Netcat), `ssh-audit`, `hydra`, and `testssl.sh`. It will then provide the full PoC to make it easy to reproduce. 
+- **Engagement Organization**: Automatically organizes all outputs into client-specific folders.
 - **Reporting Ready**: Automatically outputs:
-  - `final_report.md`: A high-level, human-readable executive summary.
-  - `dradis_import.json`: A structured JSON file ready for ingestion into reporting platforms like Dradis.
+  - `clients/<client_name>/final_report.md`: A high-level, human-readable executive summary.
+  - `clients/<client_name>/dradis_import.json`: A structured JSON file ready for ingestion into reporting platforms like Dradis.
 
 <img width="70%" alt="image" src="https://github.com/user-attachments/assets/1c3ee63a-1ea2-454b-9904-8af6553db62f" />
 
@@ -86,20 +87,27 @@ python hacksmarter.py -t "example.com, 192.168.1.1"
 # Target File
 python hacksmarter.py -t scope.txt
 
+# Organised Engagements
+Use the `-c` or `--client` flag to save all results (database, JSON, and Markdown reports) into a dedicated folder under `clients/`.
+
+python hacksmarter.py -t example.com -c AcmeCorp
+# Findings saved to clients/AcmeCorp/recon.db
+```
+
 # Excluding Tools
-You can exclude specific tools from the workflow using the `-x` or `--exclude` flag followed by a comma-separated list of tool name substrings (e.g., `nuclei`, `nmap`, `wpscan`, `feroxbuster`).
+You can exclude specific tools using the `-x` or `--exclude` flag. It supports substrings (e.g., `ferox` will skip `run_feroxbuster_tool`).
+```bash
+# Excluding tools
+python hacksmarter.py -t example.com -x nuclei,ferox
 
 # Verbose Output
 python hacksmarter.py -t example.com -v
 ```
 
-# Combined Example
-```bash
-# Skip WPScan and Feroxbuster while watching Nuclei progress in real-time
-python hacksmarter.py -t example.com -x wpscan,feroxbuster -v
-```
+# Task Management (Signal Handling)
+- **Single Ctrl+C**: Skips the current running task (e.g., its current `feroxbuster` scan) and moves to the next one. The skip is recorded in the database so the AI won't retry it.
+- **Double Ctrl+C**: Pressing Ctrl+C twice within 2 seconds triggers an **Emergency Exit**, terminating all background processes and the AI swarm immediately.
 
----
 
 ## Contributing
 

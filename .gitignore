@@ -33,7 +33,7 @@ myenv/
 *.swp
 *~
 
-# --- Databases (If you switch LangGraph to SqliteSaver) ---
+# --- Databases ---
 *.db
 *.sqlite
 *.sqlite3

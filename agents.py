@@ -31,9 +31,9 @@ class StrategyDecision(BaseModel):
     dradis_json: Optional[dict] = Field(description="If complete, output a structured JSON representing the findings, suitable for Dradis Pro ingestion.")
 
 def get_db_data():
-    """Helper to read the current findings from disk."""
+    """Helper to read the current findings from the SQLite database."""
     # Default structure to ensure all state keys exist
-    default_db = {
+    db = {
         "subdomains": [], 
         "open_ports": [], 
         "vulnerabilities": [],
@@ -42,16 +42,48 @@ def get_db_data():
         "tool_runs": {}
     }
     
-    if os.path.exists(tools.DB_PATH):
-        with open(tools.DB_PATH, "r") as f:
-            try:
-                data = json.load(f)
-                # Merge loaded data into the default structure
-                default_db.update(data)
-                return default_db
-            except json.JSONDecodeError:
-                pass
-    return default_db
+    if not os.path.exists(tools.DB_PATH):
+        return db
+
+    import sqlite3
+    conn = sqlite3.connect(tools.DB_PATH)
+    c = conn.cursor()
+    
+    try:
+        # 1. Subdomains
+        c.execute("SELECT domain FROM subdomains")
+        db["subdomains"] = [r[0] for r in c.fetchall()]
+        
+        # 2. Open Ports
+        c.execute("SELECT target, port FROM open_ports")
+        db["open_ports"] = [{"target": r[0], "port": r[1]} for r in c.fetchall()]
+        
+        # 3. Vulnerabilities
+        c.execute("SELECT target, template_id, severity, description, poc FROM vulnerabilities")
+        db["vulnerabilities"] = [
+            {"target": r[0], "template": r[1], "severity": r[2], "description": r[3], "poc": r[4]}
+            for r in c.fetchall()
+        ]
+        
+        # 4. Interesting Files
+        c.execute("SELECT target, url, comment FROM interesting_files")
+        db["interesting_files"] = [{"target": r[0], "url": r[1], "comment": r[2]} for r in c.fetchall()]
+        
+        # 5. Tool Runs (for the agent's internal logic)
+        c.execute("SELECT tool_name, target FROM tool_runs")
+        tool_runs_dict = {}
+        for r in c.fetchall():
+            if r[0] not in tool_runs_dict:
+                tool_runs_dict[r[0]] = []
+            tool_runs_dict[r[0]].append(r[1])
+        db["tool_runs"] = tool_runs_dict
+        
+    except sqlite3.Error as e:
+        print(f"[!] SQLite get_db_data Error: {e}")
+    finally:
+        conn.close()
+        
+    return db
 
 def filter_tools(tools: list, excluded_names: list) -> list:
     """Filters a list of tools based on excluded substrings."""

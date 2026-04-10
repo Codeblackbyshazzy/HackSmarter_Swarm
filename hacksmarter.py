@@ -128,6 +128,9 @@ if __name__ == "__main__":
         print(f"[*] Client Context: {args.client} (Path: {client_dir})")
         os.makedirs(client_dir, exist_ok=True)
         tools.set_output_dir(client_dir)
+    else:
+        # Initialize default DB if no client
+        tools.init_db()
 
     # 2. Iterate through targets
     for index, target in enumerate(targets):
