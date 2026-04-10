@@ -9,6 +9,8 @@ reports/
 outputs/
 *.log
 final_report.md
+ferox*
+.gemini/
 
 # --- Python Artifacts ---
 __pycache__/
