@@ -8,6 +8,7 @@ from tqdm import tqdm
 from typing import Union, List
 
 DB_PATH = "pentest_db.json"
+SKIP_CURRENT_TASK = False
 
 def update_db(key: str, new_data: list):
     # Default structure
@@ -145,31 +146,39 @@ def run_subfinder_tool(domain: str) -> str:
     if is_already_run("subfinder", domain):
         return f"[!] Skipping subfinder for {domain} - Results already in database."
         
+    global SKIP_CURRENT_TASK
     print(f"[*] Recon Agent executing subfinder on {domain}...")
     try:
-        # We REMOVED -j to support older/Kali versions of subfinder
-        result = subprocess.run(
-            ['subfinder', '-d', domain, '-silent'], 
-            capture_output=True, text=True, check=True
-        )
+        result = subprocess.run(['subfinder', '-d', domain, '-silent'], capture_output=True, text=True)
         
-        output = result.stdout.strip()
-        
-        if not output:
+        if SKIP_CURRENT_TASK:
+            SKIP_CURRENT_TASK = False
             mark_as_run("subfinder", domain)
-            return f"Subfinder scan completed for {domain}. Result: 0 subdomains discovered. This is a valid result."
-
-        # Parse plain text output (one subdomain per line)
-        subdomains = [line.strip() for line in output.split('\n') if line.strip()]
-                
-        update_db("subdomains", subdomains)
+            print(f"\n[!] Subfinder scan for {domain} skipped (User Interrupt).")
+            return f"Subfinder scan for {domain} was skipped by user."
+            
+    except KeyboardInterrupt:
+        SKIP_CURRENT_TASK = False
         mark_as_run("subfinder", domain)
-        return f"Subfinder scan successful for {domain}. Found {len(subdomains)} subdomains: {', '.join(subdomains)}"
-        
+        print(f"\n[!] Subfinder scan for {domain} interrupted by user. Skipping.")
+        return f"Subfinder scan for {domain} was skipped by user."
     except subprocess.CalledProcessError as e:
         return f"Subfinder command failed. Error: {e.stderr}"
     except Exception as e:
         return f"An unexpected error occurred: {str(e)}"
+    
+    output = result.stdout.strip()
+    
+    if not output:
+        mark_as_run("subfinder", domain)
+        return f"Subfinder scan completed for {domain}. Result: 0 subdomains discovered. This is a valid result."
+
+    # Parse plain text output (one subdomain per line)
+    subdomains = [line.strip() for line in output.split('\n') if line.strip()]
+            
+    update_db("subdomains", subdomains)
+    mark_as_run("subfinder", domain)
+    return f"Subfinder scan successful for {domain}. Found {len(subdomains)} subdomains: {', '.join(subdomains)}"
 
 @tool
 def run_nmap_tool(target: str) -> list:
@@ -180,31 +189,39 @@ def run_nmap_tool(target: str) -> list:
     if is_already_run("nmap", target):
         return f"[!] Skipping nmap for {target} - Results already in database."
 
-    print(f"[*] Recon Agent executing nmap on {target}...")
+    global SKIP_CURRENT_TASK
     try:
-        # Using grepable output (-oG) for easier Python parsing without external XML libraries
-        # -T4 and --top-ports 1000 for speed during the agent loop
-        result = subprocess.run(
-            ['nmap', '-T4', '--top-ports', '1000', '-oG', '-', target],
-            capture_output=True, text=True, check=True
-        )
+        print(f"[*] Recon Agent executing nmap on {target}...")
+        result = subprocess.run(['nmap', '-F', '-T4', '--open', '-oG', '-', target], capture_output=True, text=True)
         
-        open_ports = []
-        for line in result.stdout.split('\n'):
-            if "Ports:" in line:
-                # Extract the port numbers (Simplified parsing for example)
-                ports_section = line.split("Ports: ")[1]
-                for port_data in ports_section.split(', '):
-                    if "/open/" in port_data:
-                        port_num = port_data.split('/')[0].strip()
-                        open_ports.append({"target": target, "port": port_num})
-                        
-        update_db("open_ports", open_ports)
+        if SKIP_CURRENT_TASK:
+            SKIP_CURRENT_TASK = False
+            mark_as_run("nmap", target)
+            print(f"\n[!] Nmap scan for {target} skipped (User Interrupt).")
+            return f"Nmap scan for {target} was skipped by user."
+            
+    except KeyboardInterrupt:
+        SKIP_CURRENT_TASK = False
         mark_as_run("nmap", target)
-        ports_list = [p['port'] for p in open_ports]
-        return f"Nmap successful for {target}. Found {len(open_ports)} open ports: {', '.join(ports_list)}"
+        print(f"\n[!] Nmap scan for {target} interrupted by user. Skipping.")
+        return f"Nmap scan for {target} was skipped by user."
     except subprocess.CalledProcessError as e:
         return [{"error": f"Nmap failed: {e.stderr}"}]
+
+    open_ports = []
+    for line in result.stdout.split('\n'):
+        if "Ports:" in line:
+            # Extract the port numbers (Grepable output parsing)
+            ports_section = line.split("Ports: ")[1]
+            for port_data in ports_section.split(', '):
+                if "/open/" in port_data:
+                    port_num = port_data.split('/')[0].strip()
+                    open_ports.append({"target": target, "port": port_num})
+                        
+    update_db("open_ports", open_ports)
+    mark_as_run("nmap", target)
+    ports_list = [p['port'] for p in open_ports]
+    return f"Nmap successful for {target}. Found {len(open_ports)} open ports: {', '.join(ports_list)}"
 
 @tool
 def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
@@ -214,6 +231,7 @@ def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
         targets (list): A list of target URLs to scan.
         verbose (bool): If True, shows raw Nuclei output in the terminal.
     """
+    global SKIP_CURRENT_TASK
     out_file = 'nuclei_out.json'
     
     # 1. Clean up old output files to prevent cross-contamination
@@ -268,32 +286,49 @@ def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
             process.stdin.close()
         
         pbar = None
-        # Nuclei sends stats-json to stderr. 
-        # We read from it to update our loading bar.
-        for line in iter(process.stderr.readline, ''):
-            if verbose:
-                # If the user wants raw output, give it to them
-                print(line.strip())
-            
-            try:
-                if "{" in line and "}" in line:
-                    # Look for the JSON stats line
-                    stats = json.loads(line[line.find("{"):line.rfind("}")+1])
-                    total_reqs = int(stats.get("total", 0))
-                    curr_reqs = int(stats.get("requests", 0))
-                    
-                    if pbar is None and total_reqs > 0:
-                        pbar = tqdm(total=total_reqs, desc="[*] Nuclei Progress", unit="req", leave=False)
-                    
-                    if pbar:
-                        pbar.n = curr_reqs
-                        pbar.refresh()
-            except (json.JSONDecodeError, ValueError):
-                continue
+        try:
+            # Nuclei sends stats-json to stderr. 
+            # We read from it to update our loading bar.
+            for line in iter(process.stderr.readline, ''):
+                if verbose:
+                    # If the user wants raw output, give it to them
+                    print(line.strip())
+                
+                try:
+                    if "{" in line and "}" in line:
+                        # Look for the JSON stats line
+                        stats = json.loads(line[line.find("{"):line.rfind("}")+1])
+                        total_reqs = int(stats.get("total", 0))
+                        curr_reqs = int(stats.get("requests", 0))
+                        
+                        if pbar is None and total_reqs > 0:
+                            pbar = tqdm(total=total_reqs, desc="[*] Nuclei Progress", unit="req", leave=False)
+                        
+                        if pbar:
+                            pbar.n = curr_reqs
+                            pbar.refresh()
+                except (json.JSONDecodeError, ValueError):
+                    continue
+        except KeyboardInterrupt:
+            process.terminate()
+            SKIP_CURRENT_TASK = False
+            for t in targets:
+                mark_as_run("nuclei", t)
+            if pbar:
+                pbar.close()
+            print("\n[!] Nuclei scan interrupted by user. Skipping to next phase.")
+            return "Nuclei scan was manually skipped. Moving to next verification phase."
                 
         process.wait()
         if pbar:
             pbar.close()
+            
+        if SKIP_CURRENT_TASK:
+            SKIP_CURRENT_TASK = False
+            for t in targets:
+                mark_as_run("nuclei", t)
+            print("\n[!] Nuclei scan skipped (User Interrupt).")
+            return "Nuclei scan was manually skipped."
         
         findings = []
         if os.path.exists(out_file):
@@ -439,20 +474,29 @@ def run_wpscan_tool(target_url: str) -> str:
         token_args = ["--api-token", wpscan_token] if wpscan_token else []
 
         # Try running without update first for speed
-        result = subprocess.run(
-            ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'] + token_args,
-            capture_output=True, text=True
-        )
+        try:
+            result = subprocess.run(
+                ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'] + token_args,
+                capture_output=True, text=True
+            )
+        except KeyboardInterrupt:
+            print("\n[!] WPScan interrupted by user. Skipping.")
+            mark_as_run("wpscan", target_url)
+            return "WPScan interrupted by user."
         
         # Check if it failed due to missing database
         if "missing database" in (result.stdout + result.stderr).lower():
             print("[!] WPScan database missing. Attempting update...")
             subprocess.run(['wpscan', '--update'], capture_output=True, text=True)
             # Retry after update
-            result = subprocess.run(
-                ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'],
-                capture_output=True, text=True
-            )
+            try:
+                result = subprocess.run(
+                    ['wpscan', '--url', target_url, '--no-update', '--random-user-agent', '-e', 'vp,vt'],
+                    capture_output=True, text=True
+                )
+            except KeyboardInterrupt:
+                mark_as_run("wpscan", target_url)
+                return "WPScan interrupted by user."
         
         output = result.stdout if result.stdout else result.stderr
         
@@ -498,6 +542,7 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
         extensions (str): Comma-separated list of extensions to check (default: php,html,js,txt).
         verbose (bool): If True, shows raw feroxbuster output in the terminal.
     """
+    global SKIP_CURRENT_TASK
     targets = [url] if isinstance(url, str) else url
     
     # Filter targets that were already run
@@ -537,12 +582,24 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
                 cmd.append('--silent')
                 
             # Run feroxbuster synchronously for this target
-            subprocess.run(
-                cmd,
-                capture_output=not verbose, 
-                text=True, 
-                check=False
-            )
+            try:
+                subprocess.run(
+                    cmd,
+                    capture_output=not verbose, 
+                    text=True, 
+                    check=False
+                )
+            except KeyboardInterrupt:
+                SKIP_CURRENT_TASK = False
+                mark_as_run("feroxbuster", target)
+                print(f"\n[!] User skip requested for {target}. Moving to next target...")
+                continue
+            
+            if SKIP_CURRENT_TASK:
+                SKIP_CURRENT_TASK = False
+                mark_as_run("feroxbuster", target)
+                print(f"\n[!] User skip requested for {target}. Moving to next target...")
+                continue
             
             target_findings = []
             if os.path.exists(out_file):

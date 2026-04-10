@@ -68,6 +68,13 @@ def filter_tools(tools: list, excluded_names: list) -> list:
             
     return filtered
 
+def is_tool_excluded(tool_name: str, excluded_list: list) -> bool:
+    """Checks if a tool name (or common substring) is in the excluded list."""
+    if not excluded_list:
+        return False
+    # If the tool name itself is in excluded, or if an exclusion matches a substring
+    return any(ex.lower() in tool_name.lower() for ex in excluded_list)
+
 def strategy_node(state: PentestState):
     print("\n--- [NODE: STRATEGY & REPORTING] ---")
     
@@ -222,7 +229,7 @@ def vuln_node(state: PentestState):
     new_targets = [url for url in live_targets if not is_already_run("nuclei", url)]
     
     excluded = [e.lower() for e in state.get("excluded_tools", [])]
-    if "nuclei" in excluded or "run_nuclei_tool" in excluded:
+    if is_tool_excluded("run_nuclei_tool", excluded):
         print("[!] Tool Exclusion: Skipping automated Nuclei scan.")
         new_targets = []
 
@@ -244,7 +251,7 @@ def vuln_node(state: PentestState):
     # Filter for targets not yet scanned by feroxbuster
     feroxbuster_targets = [url for url in live_targets if not is_already_run("feroxbuster", url)]
     
-    if "feroxbuster" in excluded or "run_feroxbuster_tool" in excluded:
+    if is_tool_excluded("run_feroxbuster_tool", excluded):
         print("[!] Tool Exclusion: Skipping automated feroxbuster scan.")
         feroxbuster_targets = []
         

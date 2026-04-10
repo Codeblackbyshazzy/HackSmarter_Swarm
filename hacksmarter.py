@@ -1,12 +1,34 @@
-# main.py
 import argparse
+import signal
+import time
+import sys
 import os
 from langgraph.graph import StateGraph, END
 from state import PentestState
 from agents import recon_node, vuln_node, strategy_node
+import tools # Import tools to access SKIP_CURRENT_TASK
 from tools import run_nuclei_tool, execute_curl_request, run_nmap_tool, DB_PATH
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import RetryPolicy
+
+# Global for signal handling
+last_interrupt_time = 0
+
+def handle_sigint(signum, frame):
+    global last_interrupt_time
+    current_time = time.time()
+    
+    # Check for double Ctrl+C (within 2 seconds)
+    if current_time - last_interrupt_time < 2:
+        print("\n\n[!] Emergency Exit: Swarm terminated by user.")
+        # Kill any remaining child processes in the PGID
+        os.killpg(0, signal.SIGKILL)
+        sys.exit(1)
+    
+    last_interrupt_time = current_time
+    print("\n\n[!] Interrupt detected. Skipping current scan task...")
+    print("    (Press Ctrl+C again within 2 seconds to exit the whole swarm)")
+    tools.SKIP_CURRENT_TASK = True
 
 # 1. Initialize the Graph with our State
 workflow = StateGraph(PentestState)
@@ -79,6 +101,9 @@ app = workflow.compile(checkpointer=memory)
 
 # --- Execution ---
 if __name__ == "__main__":
+    # Register the robust skip/exit handler
+    signal.signal(signal.SIGINT, handle_sigint)
+    
     print("[*] Initializing the Hack Smarter Swarm...")
 
     # 1. Handle Arguments
