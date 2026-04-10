@@ -446,80 +446,76 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
     if not new_targets:
         return f"All {len(targets)} targets have already been scanned by feroxbuster."
 
-    print(f"[*] Executing feroxbuster on {len(new_targets)} targets...")
+    print(f"[*] Sequential Scan: Executing feroxbuster on {len(new_targets)} targets one by one...")
     out_file = 'feroxbuster_out.json'
+    all_findings = []
     
-    if os.path.exists(out_file):
-        os.remove(out_file)
+    for i, target in enumerate(new_targets):
+        # Premium progress indicator
+        print(f"[*] [{i+1}/{len(new_targets)}] Scanning target: {target}")
         
-    try:
-        # Feroxbuster command
-        # -t 5: 5 threads
-        # -d 2: recursion depth 2
-        # --json: JSON output
-        # -o: output file
-        # --stdin: read from stdin
-        # -x: extensions
-        
-        cmd = [
-            'feroxbuster',
-            '--stdin',
-            '-t', '5',
-            '-d', '2',
-            '--json',
-            '-o', out_file,
-            '-x', extensions,
-            '--no-state' # Prevent creation of .state files
-        ]
-        
-        if not verbose:
-            cmd.append('--silent')
-            
-        input_data = "\n".join(new_targets)
-            
-        # Run feroxbuster
-        subprocess.run(
-            cmd,
-            input=input_data,
-            capture_output=not verbose, 
-            text=True, 
-            check=False
-        )
-        
-        findings = []
         if os.path.exists(out_file):
-            with open(out_file, 'r') as f:
-                for line in f:
-                    try:
-                        data = json.loads(line)
-                        if data.get("type") == "response":
-                            status = data.get("status")
-                            # Filter for interesting status codes (usually 200, 301, 302)
-                            if status in [200, 301, 302]:
-                                findings.append({
-                                    "url": data.get("url"),
-                                    "status": status,
-                                    "content-length": data.get("content_length"),
-                                    "path": data.get("path")
-                                })
-                    except json.JSONDecodeError:
-                        continue
+            os.remove(out_file)
             
-            # Mark all targets as run
-            for target in new_targets:
-                mark_as_run("feroxbuster", target)
+        try:
+            # Feroxbuster command for a single target
+            cmd = [
+                'feroxbuster',
+                '-u', target,
+                '-t', '5',
+                '-d', '2',
+                '--json',
+                '-o', out_file,
+                '-x', extensions,
+                '--no-state' # Prevent creation of .state files
+            ]
+            
+            if not verbose:
+                cmd.append('--silent')
                 
-            if findings:
-                update_db("interesting_files", findings)
-                # Return a summary to the LLM
-                summary = "\n".join([f"Found: {f['url']} (Status: {f['status']})" for f in findings[:10]])
-                if len(findings) > 10:
-                    summary += f"\n... and {len(findings) - 10} more."
-                return f"Feroxbuster complete. Added {len(findings)} findings to DB.\nRecent discoveries:\n{summary}"
+            # Run feroxbuster for this specific target
+            subprocess.run(
+                cmd,
+                capture_output=not verbose, 
+                text=True, 
+                check=False
+            )
+            
+            target_findings = []
+            if os.path.exists(out_file):
+                with open(out_file, 'r') as f:
+                    for line in f:
+                        try:
+                            data = json.loads(line)
+                            if data.get("type") == "response":
+                                status = data.get("status")
+                                # Filter for interesting status codes
+                                if status in [200, 301, 302]:
+                                    target_findings.append({
+                                        "url": data.get("url"),
+                                        "status": status,
+                                        "content-length": data.get("content_length"),
+                                        "path": data.get("path")
+                                    })
+                        except json.JSONDecodeError:
+                            continue
                 
-        return f"Feroxbuster finished on {len(new_targets)} targets with 0 interesting findings."
+                if target_findings:
+                    update_db("interesting_files", target_findings)
+                    all_findings.extend(target_findings)
+            
+            # Mark THIS target as run before moving to the next
+            mark_as_run("feroxbuster", target)
 
-    except FileNotFoundError:
-        return "[!] feroxbuster binary not found! Make sure it's installed and in your PATH."
-    except Exception as e:
-        return f"Feroxbuster Error: {str(e)}"
+        except Exception as e:
+            print(f"[!] Error scanning {target}: {str(e)}")
+            continue
+
+    if all_findings:
+        # Return a global summary to the LLM
+        summary = "\n".join([f"Found: {f['url']} (Status: {f['status']})" for f in all_findings[:10]])
+        if len(all_findings) > 10:
+            summary += f"\n... and {len(all_findings) - 10} more."
+        return f"Feroxbuster sequential scan complete. Added {len(all_findings)} findings to DB across {len(new_targets)} targets.\nRecent discoveries:\n{summary}"
+        
+    return f"Feroxbuster sequential scan finished on {len(new_targets)} targets with 0 interesting findings."
