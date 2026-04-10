@@ -21,6 +21,9 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+# Pre-update wpscan database
+RUN wpscan --update
+
 # Set the working directory inside the container
 WORKDIR /app
 

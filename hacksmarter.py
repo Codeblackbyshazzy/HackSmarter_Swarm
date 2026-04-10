@@ -154,7 +154,7 @@ if __name__ == "__main__":
         # Unique thread_id per target to keep the AI's "brains" separated
         config = {
             "configurable": {"thread_id": f"run_{index}"}, 
-            "recursion_limit": 15
+            "recursion_limit": 50 # Increased to allow for deeper discovery phases
         }
 
         try:
