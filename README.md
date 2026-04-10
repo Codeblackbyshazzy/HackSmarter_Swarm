@@ -86,21 +86,25 @@ python hacksmarter.py -t "example.com, 192.168.1.1"
 
 # Target File
 python hacksmarter.py -t scope.txt
-
+```
 # Organised Engagements
 Use the `-c` or `--client` flag to save all results (database, JSON, and Markdown reports) into a dedicated folder under `clients/`.
 
+```bash
 python hacksmarter.py -t example.com -c AcmeCorp
 # Findings saved to clients/AcmeCorp/recon.db
 ```
 
 # Excluding Tools
 You can exclude specific tools using the `-x` or `--exclude` flag. It supports substrings (e.g., `ferox` will skip `run_feroxbuster_tool`).
+
 ```bash
 # Excluding tools
 python hacksmarter.py -t example.com -x nuclei,ferox
+```
 
 # Verbose Output
+```bash
 python hacksmarter.py -t example.com -v
 ```
 

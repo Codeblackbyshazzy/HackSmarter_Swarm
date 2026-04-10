@@ -93,16 +93,22 @@ def filter_live_targets_httpx(targets: list) -> list:
     try:
         input_data = "\n".join(targets)
         
-        # REMOVED check=True. We want the output even if it exits with status 1
-        result = subprocess.run(
-            ['httpx-toolkit', '-silent'], # Changed from 'httpx'
-            input=input_data,
-            capture_output=True, text=True
-        )
-        
+        # Added a 2-minute timeout to prevent potential hangs
+        try:
+            result = subprocess.run(
+                ['httpx-toolkit', '-silent', '-nc'], # Switched back to toolkit alias
+                input=input_data,
+                capture_output=True, text=True,
+                timeout=120
+            )
+        except subprocess.TimeoutExpired:
+            print("[!] httpx probe timed out after 120 seconds. Moving on.")
+            return []
+            
         output = result.stdout.strip()
+        print(f"[*] httpx probe finished. Verified {len(output.split('\n')) if output else 0} live targets.")
         
-        # If output is totally empty, it means 0 live hosts (or a catastrophic crash)
+        # If output is totally empty, it means 0 live hosts
         if not output:
             if result.returncode != 0 and result.stderr:
                 print(f"[!] httpx error output: {result.stderr.strip()}")
