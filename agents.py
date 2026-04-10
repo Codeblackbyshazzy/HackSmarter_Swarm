@@ -41,8 +41,8 @@ def get_db_data():
         "tool_runs": {}
     }
     
-    if os.path.exists(DB_PATH):
-        with open(DB_PATH, "r") as f:
+    if os.path.exists(tools.DB_PATH):
+        with open(tools.DB_PATH, "r") as f:
             try:
                 data = json.load(f)
                 # Merge loaded data into the default structure
@@ -102,8 +102,12 @@ def strategy_node(state: PentestState):
         print("\n[*] Assembling final pentest reports...")
         db = get_db_data()
         
+        # Generate paths
+        dradis_path = os.path.join(tools.OUTPUT_DIR, "dradis_import.json")
+        report_path = os.path.join(tools.OUTPUT_DIR, "final_report.md")
+        
         # Generate the Machine-Readable Report (Dradis/JSON)
-        with open("dradis_import.json", "w") as f:
+        with open(dradis_path, "w") as f:
             json.dump(db, f, indent=4)
             
         # Generate the Human-Readable Report (Markdown)
@@ -117,7 +121,7 @@ def strategy_node(state: PentestState):
         )
         final_report_md = llm.invoke(report_prompt).content
         
-        with open("final_report.md", "w") as f:
+        with open(report_path, "w") as f:
             # Clean up the markdown text just in case there's a signature
             clean_md = final_report_md if isinstance(final_report_md, str) else final_report_md[0].get("text", "")
             f.write(clean_md)

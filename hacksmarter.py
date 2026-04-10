@@ -114,6 +114,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--target", required=True, help="Target(s) or file path")
     parser.add_argument("-x", "--exclude", help="Comma-separated list of tools to exclude (e.g., nuclei,nmap)")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output for tools")
+    parser.add_argument("-c", "--client", help="Client name to organize outputs into a separate folder")
     args = parser.parse_args()
 
     targets = parse_targets(args.target)
@@ -121,6 +122,12 @@ if __name__ == "__main__":
     print(f"[*] Loaded {len(targets)} target(s).")
     if excluded_tools:
         print(f"[*] Tool Exclusions: {', '.join(excluded_tools)}")
+    
+    if args.client:
+        client_dir = os.path.join("clients", args.client)
+        print(f"[*] Client Context: {args.client} (Path: {client_dir})")
+        os.makedirs(client_dir, exist_ok=True)
+        tools.set_output_dir(client_dir)
 
     # 2. Iterate through targets
     for index, target in enumerate(targets):
@@ -137,7 +144,8 @@ if __name__ == "__main__":
             "excluded_tools": excluded_tools,
             "verbose": args.verbose,
             "markdown_report": "",
-            "dradis_json": {}
+            "dradis_json": {},
+            "client_name": args.client
         }
 
         # Unique thread_id per target to keep the AI's "brains" separated
@@ -154,7 +162,8 @@ if __name__ == "__main__":
             # We check the phase, because the Node already handled the file saving.
             if final_state.get("current_phase") == "COMPLETE":
                 print(f"[*] Swarm successfully completed operations on {target}.")
-                print(f"[*] Artifacts generated: dradis_import.json, final_report.md")
+                output_loc = f"clients/{args.client}/" if args.client else ""
+                print(f"[*] Artifacts generated: {output_loc}dradis_import.json, {output_loc}final_report.md")
             else:
                 print(f"\n[!] Swarm stopped early in phase: {final_state.get('current_phase')}")
 

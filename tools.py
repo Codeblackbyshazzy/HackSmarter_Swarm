@@ -8,7 +8,14 @@ from tqdm import tqdm
 from typing import Union, List
 
 DB_PATH = "pentest_db.json"
+OUTPUT_DIR = "."
 SKIP_CURRENT_TASK = False
+
+def set_output_dir(path: str):
+    """Sets the global output directory and updates DB_PATH."""
+    global OUTPUT_DIR, DB_PATH
+    OUTPUT_DIR = path
+    DB_PATH = os.path.join(path, "pentest_db.json")
 
 def update_db(key: str, new_data: list):
     # Default structure
@@ -232,7 +239,7 @@ def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
         verbose (bool): If True, shows raw Nuclei output in the terminal.
     """
     global SKIP_CURRENT_TASK
-    out_file = 'nuclei_out.json'
+    out_file = os.path.join(OUTPUT_DIR, 'nuclei_out.json')
     
     # 1. Clean up old output files to prevent cross-contamination
     if os.path.exists(out_file):
@@ -552,7 +559,7 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
         return f"All {len(targets)} targets have already been scanned by feroxbuster."
 
     print(f"[*] Sequential Scan: Executing feroxbuster on {len(new_targets)} targets one by one...")
-    out_file = 'feroxbuster_out.json'
+    out_file = os.path.join(OUTPUT_DIR, 'feroxbuster_out.json')
     all_findings = []
     
     for i, target in enumerate(new_targets):

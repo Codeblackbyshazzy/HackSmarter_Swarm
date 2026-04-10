@@ -1,5 +1,5 @@
 # state.py
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, Annotated, List, Optional
 
 # Create a smart reducer function to deduplicate lists
 def merge_unique(existing: list, new: list) -> list:
@@ -23,3 +23,4 @@ class PentestState(TypedDict):
     
     current_phase: str
     strategy_directives: str
+    client_name: Optional[str]

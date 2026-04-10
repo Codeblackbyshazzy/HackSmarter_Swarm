@@ -10,6 +10,7 @@ outputs/
 *.log
 final_report.md
 ferox*
+clients/
 .gemini/
 
 # --- Python Artifacts ---
