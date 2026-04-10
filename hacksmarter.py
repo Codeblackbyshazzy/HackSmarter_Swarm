@@ -112,20 +112,14 @@ if __name__ == "__main__":
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("-t", "--target", required=True, help="Target(s) or file path")
-    parser.add_argument("-x", "--exclude", help="Comma-separated list of tools to exclude (e.g., nuclei,nmap)")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output for tools")
-    parser.add_argument("-c", "--client", help="Client name to organize outputs into a separate folder")
-    args = parser.parse_args()
-
-    targets = parse_targets(args.target)
-    excluded_tools = [t.strip() for t in args.exclude.split(',')] if args.exclude else []
-    print(f"[*] Loaded {len(targets)} target(s).")
+def run_swarm(targets, excluded_tools, client_name=None, verbose=False):
+    """Execution wrapper for the AI Swarm."""
     if excluded_tools:
         print(f"[*] Tool Exclusions: {', '.join(excluded_tools)}")
     
-    if args.client:
-        client_dir = os.path.join("clients", args.client)
-        print(f"[*] Client Context: {args.client} (Path: {client_dir})")
+    if client_name:
+        client_dir = os.path.join("clients", client_name)
+        print(f"[*] Client Context: {client_name} (Path: {client_dir})")
         os.makedirs(client_dir, exist_ok=True)
         tools.set_output_dir(client_dir)
     else:
@@ -145,10 +139,10 @@ if __name__ == "__main__":
             "current_phase": "start",
             "strategy_directives": "",
             "excluded_tools": excluded_tools,
-            "verbose": args.verbose,
+            "verbose": verbose,
             "markdown_report": "",
             "dradis_json": {},
-            "client_name": args.client
+            "client_name": client_name
         }
 
         # Unique thread_id per target to keep the AI's "brains" separated
@@ -162,16 +156,37 @@ if __name__ == "__main__":
             final_state = app.invoke(initial_state, config=config)
             
             # 4. Success Check
-            # We check the phase, because the Node already handled the file saving.
             if final_state.get("current_phase") == "COMPLETE":
                 print(f"[*] Swarm successfully completed operations on {target}.")
-                output_loc = f"clients/{args.client}/" if args.client else ""
+                output_loc = f"clients/{client_name}/" if client_name else ""
                 print(f"[*] Artifacts generated: {output_loc}dradis_import.json, {output_loc}final_report.md")
             else:
-                print(f"\n[!] Swarm stopped early in phase: {final_state.get('current_phase')}")
-
+                print(f"[!] Swarm failed to reach completion state for {target}.")
         except Exception as e:
-            print(f"\n[!] Swarm error on {target}: {e}")
-            continue # Don't let one bad target kill the whole list
+            print(f"[!] Swarm error on {target}: {str(e)}")
 
     print("\n[*] All targets processed.")
+
+# --- Execution ---
+if __name__ == "__main__":
+    # Register the robust skip/exit handler
+    signal.signal(signal.SIGINT, handle_sigint)
+    
+    print("[*] Initializing the Hack Smarter Swarm...")
+
+    # 1. Handle Arguments
+    parser = argparse.ArgumentParser(
+        description="Hack Smarter AI Swarm. Built to assist, not replace.\nLearn ethical hacking @ hacksmarter.org",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    parser.add_argument("-t", "--target", required=True, help="Target(s) or file path")
+    parser.add_argument("-x", "--exclude", help="Comma-separated list of tools to exclude (e.g., nuclei,nmap)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output for tools")
+    parser.add_argument("-c", "--client", help="Client name to organize outputs into a separate folder")
+    args = parser.parse_args()
+
+    targets = parse_targets(args.target)
+    excluded_tools = [t.strip() for t in args.exclude.split(',')] if args.exclude else []
+    print(f"[*] Loaded {len(targets)} target(s).")
+    
+    run_swarm(targets, excluded_tools, args.client, args.verbose)

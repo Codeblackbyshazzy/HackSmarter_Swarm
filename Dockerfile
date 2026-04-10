@@ -43,6 +43,9 @@ COPY . .
 # Ensure signal handling works correctly (Forwarding SIGINT)
 STOPSIGNAL SIGINT
 
-# Set the default command to run the swarm
-# Users can override arguments at runtime (e.g., -t target.com)
-ENTRYPOINT ["python3", "hacksmarter.py"]
+# Expose the web GUI port
+EXPOSE 1337
+
+# Set the default command to run the web GUI
+# Users can still run the CLI by overriding the entrypoint target
+ENTRYPOINT ["python3", "web_app.py"]
