@@ -58,6 +58,12 @@ def get_report(client):
     with open(report_path, "r") as f:
         return jsonify({"content": f.read()})
 
+@socketio.on('skip_task')
+def handle_skip_task():
+    import tools
+    tools.SKIP_CURRENT_TASK = True
+    emit('log', {'data': '[!] USER SIGNAL: Requesting skip of current task...'})
+
 @socketio.on('start_swarm')
 def handle_start_swarm(data):
     target_raw = data.get('targets', '')

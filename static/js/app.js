@@ -44,6 +44,7 @@ function deploySwarm() {
     }
 
     setRunningState(true);
+    document.getElementById('skipBtn').classList.remove('hidden');
     terminal.innerHTML = '<div class="log-line system">[*] Initializing Swarm Deployment...</div>';
 
     socket.emit('start_swarm', {
@@ -53,9 +54,14 @@ function deploySwarm() {
     });
 }
 
+function skipTask() {
+    socket.emit('skip_task');
+}
+
 function setRunningState(running) {
     isRunning = running;
     const btn = document.getElementById('deployBtn');
+    const skipBtn = document.getElementById('skipBtn');
     if (running) {
         btn.disabled = true;
         btn.textContent = "SWARM ACTIVE...";
@@ -67,6 +73,7 @@ function setRunningState(running) {
         btn.disabled = false;
         btn.textContent = "DEPLOY SWARM";
         btn.classList.add('pulse');
+        skipBtn.classList.add('hidden');
         statusBadge.textContent = "Standby";
         statusBadge.style.color = "#00f2ff";
         statusBadge.style.borderColor = "#00f2ff";

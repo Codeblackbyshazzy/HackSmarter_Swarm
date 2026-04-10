@@ -61,7 +61,10 @@
 
                     <!-- Live Terminal Card -->
                     <div class="card glass terminal-container">
-                        <h2>Swarm Intelligence Terminal</h2>
+                        <div class="terminal-header">
+                            <h2>Swarm Intelligence Terminal</h2>
+                            <button id="skipBtn" class="skip-btn hidden" onclick="skipTask()">SKIP TASK</button>
+                        </div>
                         <div id="terminal" class="terminal-body">
                             <div class="log-line system">[*] Ready for deployment.</div>
                         </div>
