@@ -42,6 +42,24 @@ You get a clean, validated `dradis_import.json` and a Markdown report with concr
 
 <img width="70%" alt="image" src="https://github.com/user-attachments/assets/1c3ee63a-1ea2-454b-9904-8af6553db62f" />
 
+## Running with Docker (Recommended)
+
+To avoid installing all system dependencies manually, you can run the entire swarm using Docker.
+
+### 1. Build the Image
+```bash
+docker build -t hacksmarter .
+```
+
+### 2. Run the Swarm
+Ensure you mount your `.env` file for API keys and the `clients/` directory for persistence.
+```bash
+docker run --rm -it \
+  -v $(pwd)/.env:/app/.env \
+  -v $(pwd)/clients:/app/clients \
+  hacksmarter -t example.com -c My_Client -v
+```
+
 ## Prerequisites
 
 ### Python Dependencies
@@ -102,6 +120,13 @@ You can exclude specific tools using the `-x` or `--exclude` flag. It supports s
 # Excluding tools
 python hacksmarter.py -t example.com -x nuclei,ferox
 ```
+
+# Combined Example
+```bash
+# Watch Nuclei progress and save everything to a client folder
+python hacksmarter.py -t example.com -c InternalAudit -v
+```
+---
 
 # Verbose Output
 ```bash

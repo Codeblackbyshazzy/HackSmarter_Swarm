@@ -1,0 +1,29 @@
+# Exclude environment files
+.env
+.env.example
+
+# Exclude local findings and engaging data (use volumes instead)
+clients/
+*.db
+*.json
+*.md
+*.log
+
+# Exclude Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+myenv/
+venv/
+.venv/
+
+# Exclude IDE and Git metadata
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Exclude Docker artifacts
+Dockerfile
+.dockerignore
