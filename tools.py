@@ -4,6 +4,7 @@ import json
 import re
 from langchain_core.tools import tool
 import os
+from tqdm import tqdm
 from typing import Union, List
 
 DB_PATH = "pentest_db.json"
@@ -243,20 +244,56 @@ def run_nuclei_tool(targets: list, verbose: bool = False) -> str:
         if verbose:
             cmd.append("-v")
             
-        # Scrub GOOGLE_API_KEY to prevent Nuclei from erroneously attempting 
-        # to use Google Search templates and complaining about missing GOOGLE_API_CX.
+        # Add stats for the progress bar
+        cmd.extend(["-stats", "-stats-json", "-stats-interval", "1"])
+            
+        # Scrub GOOGLE_API_KEY
         nuclei_env = os.environ.copy()
         if "GOOGLE_API_KEY" in nuclei_env:
             del nuclei_env["GOOGLE_API_KEY"]
             
-        result = subprocess.run(
+        # Execute with real-time feedback
+        process = subprocess.Popen(
             cmd,
-            input=input_data,
-            capture_output=not verbose, 
-            text=True, 
-            check=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
             env=nuclei_env
         )
+        
+        # Write targets to stdin
+        if input_data:
+            process.stdin.write(input_data)
+            process.stdin.close()
+        
+        pbar = None
+        # Nuclei sends stats-json to stderr. 
+        # We read from it to update our loading bar.
+        for line in iter(process.stderr.readline, ''):
+            if verbose:
+                # If the user wants raw output, give it to them
+                print(line.strip())
+            
+            try:
+                if "{" in line and "}" in line:
+                    # Look for the JSON stats line
+                    stats = json.loads(line[line.find("{"):line.rfind("}")+1])
+                    total_reqs = int(stats.get("total", 0))
+                    curr_reqs = int(stats.get("requests", 0))
+                    
+                    if pbar is None and total_reqs > 0:
+                        pbar = tqdm(total=total_reqs, desc="[*] Nuclei Progress", unit="req", leave=False)
+                    
+                    if pbar:
+                        pbar.n = curr_reqs
+                        pbar.refresh()
+            except (json.JSONDecodeError, ValueError):
+                continue
+                
+        process.wait()
+        if pbar:
+            pbar.close()
         
         findings = []
         if os.path.exists(out_file):
@@ -430,6 +467,29 @@ def run_wpscan_tool(target_url: str) -> str:
         return f"WPScan Error: {str(e)}"
 
 @tool
+def add_vulnerability_tool(target: str, template: str, severity: str, description: str, poc: str) -> str:
+    """
+    Manually adds a verified vulnerability to the database.
+    Use this when you have verified a finding (e.g., via curl or other manual tools) 
+    that was not automatically added by Nuclei.
+    Args:
+        target (str): The target URL or host.
+        template (str): A name or ID for the vulnerability (e.g., 'git-config-disclosure').
+        severity (str): low, medium, high, or critical.
+        description (str): A brief description of the finding.
+        poc (str): A proof of concept (the command/output used to verify).
+    """
+    finding = {
+        "template": template,
+        "target": target,
+        "severity": severity,
+        "description": description,
+        "poc": poc 
+    }
+    update_db("vulnerabilities", [finding])
+    return f"Successfully added vulnerability '{template}' for {target} to the database."
+
+@tool
 def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html,js,txt", verbose: bool = False) -> str:
     """
     Performs directory and file discovery on a web server using feroxbuster.
@@ -451,9 +511,6 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
     all_findings = []
     
     for i, target in enumerate(new_targets):
-        # Premium progress indicator
-        print(f"[*] [{i+1}/{len(new_targets)}] Scanning target: {target}")
-        
         if os.path.exists(out_file):
             os.remove(out_file)
             
@@ -462,18 +519,24 @@ def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html
             cmd = [
                 'feroxbuster',
                 '-u', target,
-                '-t', '5',
+                '-t', '10', # Respecting the user's manual change to 10 threads
                 '-d', '2',
                 '--json',
                 '-o', out_file,
                 '-x', extensions,
-                '--no-state' # Prevent creation of .state files
+                '--no-state' 
             ]
             
+            # Message to the user since we removed the loading bar
+            print(f"[*] [{i+1}/{len(new_targets)}] Deep Discovery: Exploring {target}")
+            print(f"    - Feroxbuster is performing exhaustive directory brute-forcing.")
+            print(f"    - This can take several minutes per target. Please stand by...")
+            
+            # Use silent for the background process to keep terminal clean
             if not verbose:
                 cmd.append('--silent')
                 
-            # Run feroxbuster for this specific target
+            # Run feroxbuster synchronously for this target
             subprocess.run(
                 cmd,
                 capture_output=not verbose, 

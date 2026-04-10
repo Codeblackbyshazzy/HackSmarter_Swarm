@@ -11,7 +11,7 @@ from tools import (
     format_scope_tool, run_subfinder_tool, run_nmap_tool, run_wpscan_tool,
     run_nuclei_tool, execute_curl_request, filter_live_targets_httpx,
     run_nc_banner_grab, run_ssh_audit, run_hydra_check,
-    run_testssl_verification, run_feroxbuster_tool, run_httpx_tool, DB_PATH, update_db,
+    run_testssl_verification, run_feroxbuster_tool, run_httpx_tool, add_vulnerability_tool, DB_PATH, update_db,
     is_already_run, mark_as_run
 )
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -254,19 +254,18 @@ def vuln_node(state: PentestState):
     else:
         print(f"[-] All {len(live_targets)} live targets have already been scanned by feroxbuster. Skipping.")
 
-    # 3. Pull the combined results from the Database
-    # (Refresh the DB object since run_nuclei_tool may have just updated it)
     db = get_db_data()
     current_vulns = db.get("vulnerabilities", [])
+    interesting_files = db.get("interesting_files", [])
 
-    if not current_vulns:
-         print("[-] Nuclei found nothing across all targets.")
+    if not current_vulns and not interesting_files:
+         print("[-] No vulnerabilities or interesting files found to verify.")
          return {
              "vulnerabilities": [], 
              "current_phase": "vuln_complete"
          }
 
-    print(f"[*] DB holds {len(current_vulns)} potential issues. Waking up Gemini for verification...")
+    print(f"[*] DB holds {len(current_vulns)} potential vulns and {len(interesting_files)} interesting files. Waking up Gemini for verification...")
 
     # 4. LLM Execution: Verify Findings
     initial_verification_tools = [
@@ -275,13 +274,21 @@ def vuln_node(state: PentestState):
         run_nc_banner_grab, 
         run_ssh_audit, 
         run_hydra_check, 
-        run_testssl_verification
+        run_testssl_verification,
+        add_vulnerability_tool
     ]
     verification_tools = filter_tools(initial_verification_tools, state.get("excluded_tools", []))
     
     system_prompt = (
     "You are a Senior Penetration Tester. Your goal is to verify findings.\n\n"
-    "CRITICAL REQUIREMENT: For every verified finding, you must provide a 'Proof of Concept' (PoC).\n"
+    "TYPES OF FINDINGS TO VERIFY:\n"
+    "1. Nuclei Vulnerabilities: Standard automated findings.\n"
+    "2. Interesting Files: Discovered by feroxbuster (e.g., .env, .git, backups). You MUST use execute_curl_request to inspect these files.\n\n"
+    "### CRITICAL REQUIREMENT: SENSITIVE INFO DISCOVERY ###\n"
+    "If you use execute_curl_request and discover sensitive information (API keys, passwords, database credentials, PII, etc.), "
+    "you MUST use add_vulnerability_tool to manually add this finding to the database.\n\n"
+    "### POC REQUIREMENT ###\n"
+    "For every verified finding (automated or manual), you must provide a 'Proof of Concept' (PoC).\n"
     "The PoC must include:\n"
     "1. The EXACT command or tool call you used (e.g., the hydra command or curl string).\n"
     "2. The specific line of output that confirms the vulnerability.\n\n"
@@ -294,7 +301,7 @@ def vuln_node(state: PentestState):
     # 4. LLM Execution: Verify Findings 
     # (The manual retry loop has been removed here, as we now use LangGraph's native RetryPolicy)
     verification_results = agent_executor.invoke({
-        "messages": [("user", f"Here are the raw Nuclei findings from the database:\n{current_vulns}")]
+        "messages": [("user", f"Verify the following findings:\n\n### RAW VULNERABILITIES (Nuclei) ###\n{current_vulns}\n\n### INTERESTING FILES (Feroxbuster) ###\n{interesting_files}")]
     })
 
 
