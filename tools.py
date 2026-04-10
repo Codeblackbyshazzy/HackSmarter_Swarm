@@ -430,53 +430,57 @@ def run_wpscan_tool(target_url: str) -> str:
         return f"WPScan Error: {str(e)}"
 
 @tool
-def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,js,txt", verbose: bool = False) -> str:
+def run_feroxbuster_tool(url: Union[str, List[str]], extensions: str = "php,html,js,txt", verbose: bool = False) -> str:
     """
-    Performs directory and file discovery on a web server using dirsearch.
+    Performs directory and file discovery on a web server using feroxbuster.
     Args:
         url (Union[str, List[str]]): The target URL or a list of target URLs.
         extensions (str): Comma-separated list of extensions to check (default: php,html,js,txt).
-        verbose (bool): If True, shows raw dirsearch output in the terminal.
+        verbose (bool): If True, shows raw feroxbuster output in the terminal.
     """
     targets = [url] if isinstance(url, str) else url
     
     # Filter targets that were already run
-    new_targets = [t for t in targets if not is_already_run("dirsearch", t)]
+    new_targets = [t for t in targets if not is_already_run("feroxbuster", t)]
     
     if not new_targets:
-        return f"All {len(targets)} targets have already been scanned by dirsearch."
+        return f"All {len(targets)} targets have already been scanned by feroxbuster."
 
-    print(f"[*] Executing dirsearch on {len(new_targets)} targets...")
-    out_file = 'dirsearch_out.json'
-    targets_file = 'dirsearch_targets.txt'
+    print(f"[*] Executing feroxbuster on {len(new_targets)} targets...")
+    out_file = 'feroxbuster_out.json'
     
     if os.path.exists(out_file):
         os.remove(out_file)
         
     try:
-        # If multiple targets, use a temporary file
-        if len(new_targets) > 1:
-            with open(targets_file, 'w') as f:
-                f.write("\n".join(new_targets))
-            cmd_targets = ['-l', targets_file]
-        else:
-            cmd_targets = ['-u', new_targets[0]]
-
+        # Feroxbuster command
+        # -t 5: 5 threads
+        # -d 2: recursion depth 2
+        # --json: JSON output
+        # -o: output file
+        # --stdin: read from stdin
+        # -x: extensions
+        
         cmd = [
-                'dirsearch'
-            ] + cmd_targets + [
-                '-e', extensions, 
-                '--format', 'json', 
-                '-o', out_file,
-                '--random-user-agent'
-            ]
-            
+            'feroxbuster',
+            '--stdin',
+            '-t', '5',
+            '-d', '2',
+            '--json',
+            '-o', out_file,
+            '-x', extensions,
+            '--no-state' # Prevent creation of .state files
+        ]
+        
         if not verbose:
-            cmd.append('--quiet-mode')
+            cmd.append('--silent')
             
-        # Run dirsearch
+        input_data = "\n".join(new_targets)
+            
+        # Run feroxbuster
         subprocess.run(
             cmd,
+            input=input_data,
             capture_output=not verbose, 
             text=True, 
             check=False
@@ -485,37 +489,25 @@ def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,j
         findings = []
         if os.path.exists(out_file):
             with open(out_file, 'r') as f:
-                try:
-                    data = json.load(f)
-                    
-                    # Dirsearch JSON structure for bulk scans:
-                    # Sometimes it's a dict with 'results' key, or a dict where keys are targets.
-                    # We'll try to find any 'status' items in the hierarchy.
-                    
-                    def extract_results(d):
-                        if isinstance(d, dict):
-                            if "status" in d and "path" in d:
-                                status = d.get("status")
-                                if status in [200, 301, 302]:
-                                    findings.append({
-                                        "url": d.get("url", "unknown"),
-                                        "status": status,
-                                        "content-length": d.get("content-length"),
-                                        "path": d.get("path")
-                                    })
-                            for v in d.values():
-                                extract_results(v)
-                        elif isinstance(d, list):
-                            for item in d:
-                                extract_results(item)
-
-                    extract_results(data)
-                except json.JSONDecodeError:
-                    print("[!] Error decoding dirsearch JSON output.")
+                for line in f:
+                    try:
+                        data = json.loads(line)
+                        if data.get("type") == "response":
+                            status = data.get("status")
+                            # Filter for interesting status codes (usually 200, 301, 302)
+                            if status in [200, 301, 302]:
+                                findings.append({
+                                    "url": data.get("url"),
+                                    "status": status,
+                                    "content-length": data.get("content_length"),
+                                    "path": data.get("path")
+                                })
+                    except json.JSONDecodeError:
+                        continue
             
             # Mark all targets as run
             for target in new_targets:
-                mark_as_run("dirsearch", target)
+                mark_as_run("feroxbuster", target)
                 
             if findings:
                 update_db("interesting_files", findings)
@@ -523,14 +515,11 @@ def run_dirsearch_tool(url: Union[str, List[str]], extensions: str = "php,html,j
                 summary = "\n".join([f"Found: {f['url']} (Status: {f['status']})" for f in findings[:10]])
                 if len(findings) > 10:
                     summary += f"\n... and {len(findings) - 10} more."
-                return f"Dirsearch complete. Added {len(findings)} findings to DB.\nRecent discoveries:\n{summary}"
+                return f"Feroxbuster complete. Added {len(findings)} findings to DB.\nRecent discoveries:\n{summary}"
                 
-        return f"Dirsearch finished on {len(new_targets)} targets with 0 interesting findings."
+        return f"Feroxbuster finished on {len(new_targets)} targets with 0 interesting findings."
 
     except FileNotFoundError:
-        return "[!] dirsearch binary not found! Make sure it's installed and in your PATH."
+        return "[!] feroxbuster binary not found! Make sure it's installed and in your PATH."
     except Exception as e:
-        return f"Dirsearch Error: {str(e)}"
-    finally:
-        if os.path.exists(targets_file):
-            os.remove(targets_file)
+        return f"Feroxbuster Error: {str(e)}"

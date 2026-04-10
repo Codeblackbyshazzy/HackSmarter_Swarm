@@ -11,7 +11,7 @@ from tools import (
     format_scope_tool, run_subfinder_tool, run_nmap_tool, run_wpscan_tool,
     run_nuclei_tool, execute_curl_request, filter_live_targets_httpx,
     run_nc_banner_grab, run_ssh_audit, run_hydra_check,
-    run_testssl_verification, run_dirsearch_tool, run_httpx_tool, DB_PATH, update_db,
+    run_testssl_verification, run_feroxbuster_tool, run_httpx_tool, DB_PATH, update_db,
     is_already_run, mark_as_run
 )
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -136,7 +136,7 @@ def recon_node(state: PentestState):
     
     initial_recon_tools = [
         run_subfinder_tool, run_nmap_tool, format_scope_tool, 
-        run_wpscan_tool, run_dirsearch_tool, run_httpx_tool
+        run_wpscan_tool, run_feroxbuster_tool, run_httpx_tool
     ]
     recon_tools = filter_tools(initial_recon_tools, state.get("excluded_tools", []))
     directives = state.get("strategy_directives") or "Perform initial discovery on the target."
@@ -151,8 +151,8 @@ def recon_node(state: PentestState):
         "that have been explicitly discovered by subfinder or are in the known list below."
         f"{subdomain_context}\n"
         "Use run_httpx_tool to verify if a discovered subdomain or port is hosting a live web server "
-        "BEFORE attempting to run dirsearch or wpscan on it.\n"
-        "If you identify a live web server, you should also perform directory discovery using dirsearch. "
+        "BEFORE attempting to run feroxbuster or wpscan on it.\n"
+        "If you identify a live web server, you should also perform directory discovery using feroxbuster. "
         "When you are finished, summarize what you found."
     )
 
@@ -237,20 +237,20 @@ def vuln_node(state: PentestState):
             mark_as_run("nuclei", target)
         
     # ==========================================
-    # THE DIRSEARCH BULK DISCOVERY (NEW)
+    # THE FEROXBUSTER BULK DISCOVERY (NEW)
     # ==========================================
-    # Filter for targets not yet scanned by dirsearch
-    dirsearch_targets = [url for url in live_targets if not is_already_run("dirsearch", url)]
+    # Filter for targets not yet scanned by feroxbuster
+    feroxbuster_targets = [url for url in live_targets if not is_already_run("feroxbuster", url)]
     
-    if "dirsearch" in excluded or "run_dirsearch_tool" in excluded:
-        print("[!] Tool Exclusion: Skipping automated dirsearch scan.")
-        dirsearch_targets = []
+    if "feroxbuster" in excluded or "run_feroxbuster_tool" in excluded:
+        print("[!] Tool Exclusion: Skipping automated feroxbuster scan.")
+        feroxbuster_targets = []
         
-    if dirsearch_targets:
-        print(f"[*] Executing Bulk Dirsearch on {len(dirsearch_targets)} targets...")
-        run_dirsearch_tool.invoke({"url": dirsearch_targets, "verbose": state.get("verbose")})
+    if feroxbuster_targets:
+        print(f"[*] Executing Bulk Feroxbuster on {len(feroxbuster_targets)} targets...")
+        run_feroxbuster_tool.invoke({"url": feroxbuster_targets, "verbose": state.get("verbose")})
     else:
-        print(f"[-] All {len(live_targets)} live targets have already been scanned by dirsearch. Skipping.")
+        print(f"[-] All {len(live_targets)} live targets have already been scanned by feroxbuster. Skipping.")
 
     # 3. Pull the combined results from the Database
     # (Refresh the DB object since run_nuclei_tool may have just updated it)

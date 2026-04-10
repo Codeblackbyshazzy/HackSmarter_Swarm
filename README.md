@@ -60,7 +60,7 @@ The AI interacts with the following command-line binaries. Ensure they are insta
 - [Hydra](https://github.com/vanhauser-thc/thc-hydra)
 - [WPScan](https://github.com/wpscantech/wpscan)
 - [testssl.sh](https://testssl.sh/)
-- [dirsearch](https://github.com/maurosoria/dirsearch)
+- [feroxbuster](https://github.com/epi052/feroxbuster)
 
 ### Environment Variables
 You need a Google Gemini API Key. Ensure it is placed in a `.env` file in the root of the project:
@@ -87,7 +87,7 @@ python hacksmarter.py -t "example.com, 192.168.1.1"
 python hacksmarter.py -t scope.txt
 
 # Excluding Tools
-You can exclude specific tools from the workflow using the `-x` or `--exclude` flag followed by a comma-separated list of tool name substrings (e.g., `nuclei`, `nmap`, `wpscan`, `dirsearch`).
+You can exclude specific tools from the workflow using the `-x` or `--exclude` flag followed by a comma-separated list of tool name substrings (e.g., `nuclei`, `nmap`, `wpscan`, `feroxbuster`).
 
 # Verbose Output
 python hacksmarter.py -t example.com -v
@@ -95,8 +95,8 @@ python hacksmarter.py -t example.com -v
 
 # Combined Example
 ```bash
-# Skip WPScan and Dirsearch while watching Nuclei progress in real-time
-python hacksmarter.py -t example.com -x wpscan,dirsearch -v
+# Skip WPScan and Feroxbuster while watching Nuclei progress in real-time
+python hacksmarter.py -t example.com -x wpscan,feroxbuster -v
 ```
 
 ---
